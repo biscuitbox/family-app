@@ -46,7 +46,7 @@
     for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
     return stepId + '_' + h.toString(36);
   }
-  function kidById(id) { return (S.config.kids || []).find(k => k.id === id); }
+  function kidById(id) { return ((S.config && S.config.kids) || []).find(k => k.id === id); }
   // 방학: 시작일~끝일. 끝나기 전 7일은 "개학 연습 주간"이라 평소처럼 등교 준비를 연습한다
   function vacationState(d) {
     const v = S.config.vacation || {};
@@ -80,6 +80,7 @@
     return 'rest';
   }
   function currentMode() {
+    if (!S.config) return 'rest'; // 로그인 전(설정을 아직 못 받음)
     const auto = autoMode(new Date());
     // 실제 사용에서 쉬는 시간에 직접 연 화면은 시간대가 바뀌면 저절로 풀린다 (체험 모드의 시간대 선택은 유지)
     if (S.mode !== 'demo' && ui.preview !== 'auto' && auto !== ui.previewFrom) ui.preview = 'auto';
