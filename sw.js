@@ -1,6 +1,6 @@
 // sw.js — 홈 화면 앱으로 설치했을 때 인터넷이 잠깐 끊겨도 화면이 열리게 한다.
 // 앱 파일을 고친 뒤 배포할 때는 VERSION 숫자를 하나 올리세요.
-const VERSION = 'ugh-v6';
+const VERSION = 'ugh-v7';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'store.js', 'config.js', 'manifest.json', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
