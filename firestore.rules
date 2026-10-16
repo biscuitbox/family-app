@@ -1,0 +1,139 @@
+rules_version = '2';
+
+// 우리집 성장 앱 — Firestore 보안 규칙
+// 원칙: 가족(families/{familyId}) 안의 데이터는 그 가족에 연결된 기기만 읽고 쓴다.
+//       설정·사진은 부모만 바꾸고, 아이 기기는 자기 기록과 스티커만 쓴다.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function memberPath(fid) { return /databases/$(database)/documents/families/$(fid)/members/$(request.auth.uid); }
+    function isMember(fid) { return signedIn() && exists(memberPath(fid)); }
+    function role(fid) { return get(memberPath(fid)).data.role; }
+    function isParent(fid) { return isMember(fid) && role(fid) == 'parent'; }
+    function myKid(fid) { return get(memberPath(fid)).data.kidId; }
+
+    // 초대 코드로 들어오는 아이 기기: 유효한 코드여야만 자기 자리를 만들 수 있다
+    function validJoin(fid, uid) {
+      let inv = get(/databases/$(database)/documents/invites/$(request.resource.data.code)).data;
+      return signedIn() && request.auth.uid == uid
+        && request.resource.data.role == 'kid'
+        && inv.familyId == fid
+        && inv.kidId == request.resource.data.kidId
+        && inv.expiresAt > request.time;
+    }
+
+    // 기기마다 어느 가족인지 기억하는 문서 (자기 것만)
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // 초대 코드: 코드를 아는 기기만 한 개씩 읽을 수 있고, 목록은 볼 수 없다
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if isParent(request.resource.data.familyId) && request.resource.data.createdBy == request.auth.uid;
+      allow delete: if isParent(resource.data.familyId);
+      allow update: if false;
+    }
+
+    match /families/{fid} {
+      allow read: if isMember(fid);
+      allow create: if signedIn() && fid == request.auth.uid;   // 부모가 처음 시작할 때
+      allow update: if isParent(fid);
+      allow delete: if false;
+
+      match /members/{uid} {
+        allow read: if isMember(fid);
+        allow create: if (signedIn() && request.auth.uid == uid && fid == request.auth.uid && request.resource.data.role == 'parent')
+                      || validJoin(fid, uid);
+        allow update: if false;
+        allow delete: if isParent(fid);
+      }
+
+      // 설정(루틴, 시간표, 아이 설정)과 사진: 가족 모두 읽기, 부모만 쓰기
+      match /state/{doc} {
+        allow read: if isMember(fid);
+        allow write: if isParent(fid);
+      }
+      match /photos/{photoId} {
+        allow read: if isMember(fid);
+        allow write: if isParent(fid) && (request.resource == null || request.resource.data.data.size() < 900000);
+      }
+
+      // 하루 기록: 문서 이름이 "날짜_아이" — 아이 기기는 자기 기록만 쓴다
+      match /logs/{logId} {
+        allow read: if isMember(fid);
+        allow write: if isParent(fid) || (isMember(fid) && logId.matches('.*_' + myKid(fid)));
+      }
+
+      // 스티커 수
+      // 아이는 받은 스티커·연속 기록만 바꾸고, 쓴 스티커(spent)는 부모 승인으로만 바뀐다
+      match /stats/{kidId} {
+        allow read: if isMember(fid);
+        allow create: if isParent(fid) || (isMember(fid) && myKid(fid) == kidId && !('spent' in request.resource.data));
+        allow update: if isParent(fid) || (isMember(fid) && myKid(fid) == kidId
+                      && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['spent']));
+        allow delete: if isParent(fid);
+      }
+
+      // 2단계: 책장, 나의 문장 모음, 필사·표지 사진 — 가족 모두 읽기, 각자 자기 것만 쓰기 (부모는 모두)
+      match /books/{id} {
+        allow read: if isMember(fid);
+        allow create: if isParent(fid) || (isMember(fid) && request.resource.data.owner == myKid(fid));
+        allow update: if isParent(fid) || (isMember(fid) && resource.data.owner == myKid(fid) && request.resource.data.owner == myKid(fid));
+        allow delete: if isParent(fid) || (isMember(fid) && resource.data.owner == myKid(fid));
+      }
+      match /quotes/{id} {
+        allow read: if isMember(fid);
+        allow create: if isParent(fid) || (isMember(fid) && request.resource.data.owner == myKid(fid));
+        allow update: if isParent(fid) || (isMember(fid) && resource.data.owner == myKid(fid) && request.resource.data.owner == myKid(fid));
+        allow delete: if isParent(fid) || (isMember(fid) && resource.data.owner == myKid(fid));
+      }
+      match /media/{id} {
+        allow read: if isMember(fid);
+        allow create: if (isParent(fid) || (isMember(fid) && request.resource.data.owner == myKid(fid)))
+                      && request.resource.data.data.size() < 900000;
+        allow delete: if isParent(fid) || (isMember(fid) && resource.data.owner == myKid(fid));
+        allow update: if false;
+      }
+
+      // 4단계: 용돈 기입장과 저축 목표 — 가족 모두 읽기, 각자 자기 것만 쓰기 (부모는 모두)
+      match /money/{id} {
+        allow read: if isMember(fid);
+        allow create: if isParent(fid) || (isMember(fid) && request.resource.data.owner == myKid(fid));
+        allow update: if isParent(fid) || (isMember(fid) && resource.data.owner == myKid(fid) && request.resource.data.owner == myKid(fid));
+        allow delete: if isParent(fid) || (isMember(fid) && resource.data.owner == myKid(fid));
+      }
+      match /goals/{id} {
+        allow read: if isMember(fid);
+        allow create: if isParent(fid) || (isMember(fid) && request.resource.data.owner == myKid(fid));
+        allow update: if isParent(fid) || (isMember(fid) && resource.data.owner == myKid(fid) && request.resource.data.owner == myKid(fid));
+        allow delete: if isParent(fid) || (isMember(fid) && resource.data.owner == myKid(fid));
+      }
+
+      // 3단계: 가족 칭찬 카드 — 가족 모두 읽기, 보내는 사람 이름으로만 쓰기
+      match /cheercards/{id} {
+        allow read: if isMember(fid);
+        allow create: if isParent(fid) || (isMember(fid) && request.resource.data.from == myKid(fid));
+        allow update, delete: if isParent(fid);
+      }
+      // 주간 돌아보기: 문서 이름이 "주 시작일_사람" — 각자 자기 것만
+      match /reviews/{id} {
+        allow read: if isMember(fid);
+        allow write: if isParent(fid) || (isMember(fid) && id.matches('.*_' + myKid(fid)));
+      }
+      // 스티커 바꾸기: 아이는 자기 이름으로 신청만, 승인·거절은 부모만
+      match /redeems/{id} {
+        allow read: if isMember(fid);
+        allow create: if isParent(fid) || (isMember(fid) && request.resource.data.kidId == myKid(fid) && request.resource.data.status == 'requested');
+        allow update, delete: if isParent(fid);
+      }
+
+      // 아빠 기록 중 아이들에게 숨긴 것: 부모만 읽고 쓴다
+      match /notes/{date} {
+        allow read, write: if isParent(fid);
+      }
+    }
+  }
+}

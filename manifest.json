@@ -1,0 +1,17 @@
+{
+  "name": "우리집 성장 앱",
+  "short_name": "우리집",
+  "description": "아침 등교 준비와 내일 준비를 아이가 스스로 해내도록 돕는 가족 앱",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0B1024",
+  "theme_color": "#0B1024",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
