@@ -16,7 +16,8 @@ node make_configs.mjs
 # 2026-11-16(월) ~ 2026-11-29(일), 10분 간격 (KST)
 START=$(TZ=Asia/Seoul date -d '2026-11-16 00:00' +%s)
 EPOCHS=$(seq "$START" 600 $((START + 14 * 86400 - 1)) | tr '\n' ' ')
-for cfg in build/config_school.json build/config_vacation.json; do
+node ../tools/make_defaults.mjs
+for cfg in build/config_school.json build/config_vacation.json build/config_old.json; do
   for kid in k1 k2; do
     echo "== $(basename "$cfg") $kid"
     TZ=Asia/Seoul node compare.mjs "$cfg" "$kid" $EPOCHS

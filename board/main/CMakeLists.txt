@@ -7,6 +7,7 @@ idf_component_register(
     SRCS "main.c" "hw.c" "net.c" "cloud.c" "sync.c" "ui.c" "model.c" "fs_json.c" "ikey.c"
     INCLUDE_DIRS "."
     EMBED_FILES "fonts/board_sans_regular.ttf" "fonts/board_sans_semibold.ttf"
+    EMBED_TXTFILES "config_defaults.json"
     PRIV_REQUIRES ${reqs}
 )
 # 화면 글자는 칸이 모자라면 잘라 쓰도록 만들었으므로, 잘림 가능성 경고는 빌드를 멈추지 않게 한다

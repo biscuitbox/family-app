@@ -44,6 +44,11 @@ const char *jstr(const cJSON *o, const char *key, const char *def);
 double jnum(const cJSON *o, const char *key, double def);
 bool jtruthy(const cJSON *v);                                // JS의 !!v 와 같게
 
+// ---------- 설정 채우기 ----------
+// 앱 store.js normalizeConfig()와 같게: 저장된 설정에 없는 칸(집안일, 방학 등)을 앱 기본값으로 채운다.
+// defaults_json: tools/make_defaults.mjs가 만든 {"defaults":{...},"vacationRoutine":[...]}
+void normalize_config(cJSON *cfg, const char *defaults_json);
+
 // ---------- 날짜와 시간 ----------
 void date_key(const struct tm *t, char out[11]);             // "2026-11-21"
 int hm(const char *s);                                        // "06:40" → 400

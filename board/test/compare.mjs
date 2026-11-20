@@ -39,11 +39,25 @@ const parts = [
   grab(appSrc, /function clockFor\(/),
   grab(appSrc, /function timeLeft\(/),
   grab(appSrc, /function routineSteps\(/),
+  line(appSrc, /function choresToday\(/),
 ].join('\n');
 const dateKeySrc = grab(storeSrc, /function dateKey\(/);
+// 앱은 불러온 설정을 normalizeConfig로 채워서 쓴다 → 같은 함수로 채운다
+function grabAny(src, re) {
+  const m = re.exec(src); if (!m) throw new Error('찾지 못함: ' + re);
+  let i = m.index, d = 0, seen = false;
+  for (; i < src.length; i++) { const c = src[i]; if (c === '{' || c === '[') { d++; seen = true; } else if (c === '}' || c === ']') { d--; if (seen && d === 0) { i++; break; } } }
+  return src.slice(m.index, i);
+}
+const normSrc = [/function skill\(/, /function stage2Defaults\(/, /function stage3Defaults\(/, /function stage4Defaults\(/, /function stage5Defaults\(/, /const VACATION_ROUTINE = /, /function normalizeConfig\(/]
+  .map(re => grabAny(storeSrc, re)).join(';\n');
 
 const [, , cfgPath, kid, ...epochs] = process.argv;
-const config = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+const rawConfig = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+const nctx = { JSON, Object };
+vm.createContext(nctx);
+vm.runInContext(normSrc + ';\nvar __cfg = normalizeConfig(' + JSON.stringify(rawConfig) + ');', nctx);
+const config = nctx.__cfg;
 
 // 고정 시각을 돌려주는 Date (앱 함수 안의 new Date()가 이 시각을 보게)
 function makeDate(nowMs) {
@@ -63,7 +77,8 @@ const appResults = epochs.map(e => {
     '\nvar __out = (function(){ const d = new Date(); return { mode: autoMode(d), school: isSchoolDay(d), vac: ({ rest: 2, practice: 1 })[vacationState(d)] || 0, eveningLabel: eveningLabel(),' +
     ' leftMorning: (timeLeft("morning") || { mins: -9999 }).mins, leftEvening: (timeLeft("evening") || { mins: -9999 }).mins,' +
     ' morning: routineSteps(' + JSON.stringify(kid) + ', "morning").map(s => ({ id: s.id, items: s.items.map(it => ({ text: it.text, key: ikey(s.id, it.text), sup: !!it.sup })) })),' +
-    ' evening: routineSteps(' + JSON.stringify(kid) + ', "evening").map(s => ({ id: s.id, items: s.items.map(it => ({ text: it.text, key: ikey(s.id, it.text), sup: !!it.sup })) })) }; })();', ctx);
+    ' evening: routineSteps(' + JSON.stringify(kid) + ', "evening").map(s => ({ id: s.id, items: s.items.map(it => ({ text: it.text, key: ikey(s.id, it.text), sup: !!it.sup })) })),' +
+    ' chores: choresToday(' + JSON.stringify(kid) + ').map(c => c.id) }; })();', ctx);
   return Object.assign({ epoch: Number(e) }, ctx.__out);
 });
 
@@ -74,10 +89,10 @@ let fail = 0;
 appResults.forEach((a, i) => {
   const c = cResults[i];
   // 앱은 쉬는 시간에 routineSteps를 부르지 않으므로 단계 목록은 늘 비교하고, 시간대는 따로 비교
-  for (const k of ['mode', 'school', 'vac', 'eveningLabel', 'leftMorning', 'leftEvening', 'morning', 'evening']) {
+  for (const k of ['mode', 'school', 'vac', 'eveningLabel', 'leftMorning', 'leftEvening', 'morning', 'evening', 'chores']) {
     const x = JSON.stringify(a[k]), y = JSON.stringify(c[k]);
     if (x !== y) { fail++; console.log(`다름 ${new Date(a.epoch * 1000).toISOString()} ${k}\n  앱:  ${x}\n  보드: ${y}`); }
   }
 });
-console.log(`${appResults.length}개 시각 × 8개 값 비교, 다른 곳 ${fail}개`);
+console.log(`${appResults.length}개 시각 × 9개 값 비교, 다른 곳 ${fail}개`);
 process.exit(fail ? 1 : 0);

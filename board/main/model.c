@@ -46,6 +46,48 @@ bool jtruthy(const cJSON *v)
     return true; // true, 객체, 배열
 }
 
+// ---------- 설정 채우기 (store.js normalizeConfig) ----------
+static bool nullish(const cJSON *v) { return !v || cJSON_IsNull(v); }
+
+static void put(cJSON *o, const char *key, cJSON *val)
+{
+    if (cJSON_GetObjectItemCaseSensitive(o, key)) cJSON_DeleteItemFromObjectCaseSensitive(o, key);
+    cJSON_AddItemToObject(o, key, val);
+}
+
+void normalize_config(cJSON *cfg, const char *defaults_json)
+{
+    if (!cfg || !cJSON_IsObject(cfg) || !defaults_json) return;
+    cJSON *d = cJSON_Parse(defaults_json);
+    if (!d) return;
+    const cJSON *e;
+    // Object.keys(d).forEach(k => { if (cfg[k] == null) cfg[k] = d[k]; })
+    cJSON_ArrayForEach(e, jget(d, "defaults"))
+        if (nullish(cJSON_GetObjectItemCaseSensitive(cfg, e->string))) put(cfg, e->string, cJSON_Duplicate(e, 1));
+    if (!cJSON_IsObject(jget(cfg, "routines"))) put(cfg, "routines", cJSON_CreateObject());
+    if (!cJSON_IsObject(jget(cfg, "chores"))) put(cfg, "chores", cJSON_CreateObject());
+    cJSON *routines = cJSON_GetObjectItemCaseSensitive(cfg, "routines");
+    cJSON *chores = cJSON_GetObjectItemCaseSensitive(cfg, "chores");
+    const cJSON *kid;
+    cJSON_ArrayForEach(kid, jget(cfg, "kids")) {
+        const char *id = jstr(kid, "id", NULL);
+        if (!id) continue;
+        // cfg.routines[kid.id] = cfg.routines[kid.id] || { morning: [], evening: [] };
+        cJSON *r = cJSON_GetObjectItemCaseSensitive(routines, id);
+        if (!jtruthy(r)) {
+            r = cJSON_CreateObject();
+            cJSON_AddItemToObject(r, "morning", cJSON_CreateArray());
+            cJSON_AddItemToObject(r, "evening", cJSON_CreateArray());
+            put(routines, id, r);
+        }
+        // if (!cfg.routines[kid.id].vacation) ... = VACATION_ROUTINE
+        if (!jtruthy(jget(r, "vacation")) && cJSON_IsObject(r)) put(r, "vacation", cJSON_Duplicate(jget(d, "vacationRoutine"), 1));
+        // if (!cfg.chores[kid.id]) cfg.chores[kid.id] = [];
+        if (!jtruthy(cJSON_GetObjectItemCaseSensitive(chores, id))) put(chores, id, cJSON_CreateArray());
+    }
+    cJSON_Delete(d);
+}
+
 // ---------- 날짜와 시간 ----------
 void date_key(const struct tm *t, char out[11])
 {

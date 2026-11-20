@@ -20,6 +20,8 @@
 #include "net.h"
 
 static const char *TAG = "sync";
+// tools/make_defaults.mjs가 만든 앱 기본값 (EMBED_TXTFILES라 끝에 0이 붙어 있음)
+extern const uint8_t defaults_json_start[] asm("_binary_config_defaults_json_start");
 #define PENDING_MAX 32
 #define FAST_US (10LL * 1000000)
 #define SLOW_US (120LL * 1000000)
@@ -110,6 +112,7 @@ static int fetch_config(void)
     cJSON *cfg = NULL;
     int code = cloud_get(rel, CONFIG_MASK, &cfg);
     if (code == 200 && cfg) {
+        normalize_config(cfg, (const char *)defaults_json_start); // 앱처럼 빈 칸을 기본값으로
         sync_lock();
         cJSON_Delete(st.cfg);
         st.cfg = cfg;

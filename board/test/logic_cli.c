@@ -49,6 +49,8 @@ int main(int argc, char **argv)
     if (argc < 4) { fprintf(stderr, "usage: logic_cli config.json kid epoch...\n"); return 2; }
     char *txt = read_file(argv[1]);
     cJSON *cfg = cJSON_Parse(txt);
+    char *defs = read_file("../main/config_defaults.json");
+    normalize_config(cfg, defs); // 보드와 같게 앱 기본값으로 빈 칸 채우기
     const char *kid = argv[2];
     cJSON *out = cJSON_CreateArray();
     for (int a = 3; a < argc; a++) {
@@ -69,6 +71,10 @@ int main(int argc, char **argv)
         cJSON_AddNumberToObject(r, "leftEvening", time_left(cfg, MODE_EVENING, &t, &f, &mins) ? mins : -9999);
         cJSON_AddItemToObject(r, "morning", steps_json(cfg, kid, MODE_MORNING, &t));
         cJSON_AddItemToObject(r, "evening", steps_json(cfg, kid, MODE_EVENING, &t));
+        static chore_t ch[CHORE_MAX];
+        int nc = chores_today(cfg, kid, &t, ch, CHORE_MAX);
+        cJSON *ca = cJSON_AddArrayToObject(r, "chores");
+        for (int i = 0; i < nc; i++) cJSON_AddItemToArray(ca, cJSON_CreateString(ch[i].id));
         cJSON_AddItemToArray(out, r);
     }
     char *s = cJSON_PrintUnformatted(out);

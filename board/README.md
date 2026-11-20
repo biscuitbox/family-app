@@ -94,7 +94,9 @@ test/
 board/test/run.sh    # gcc, node 18+ 필요
 ```
 
-`run.sh`는 app.js의 함수를 그대로 꺼내 2주치 시각(10분 간격) × 두 아이 × 두 설정(학기 중, 방학)에서 시간대·남은 시간·루틴 단계·확인 항목 키를 보드 코드와 비교합니다. 다른 곳이 0개여야 합니다.
+`run.sh`는 app.js의 함수를 그대로 꺼내 2주치 시각(10분 간격) × 두 아이 × 세 설정(학기 중, 방학, 집안일·방학 칸이 없는 예전 설정)에서 시간대·남은 시간·루틴 단계·확인 항목 키·오늘 집안일을 보드 코드와 비교합니다. 다른 곳이 0개여야 합니다.
+
+`store.js`의 기본값(`stage2Defaults`~`stage5Defaults`, `VACATION_ROUTINE`)을 바꾸면 `node board/tools/make_defaults.mjs`로 `main/config_defaults.json`을 다시 만드세요. 앱은 저장된 설정에 없는 칸을 이 기본값으로 채워 보여 주므로, 보드도 같은 값을 써야 화면이 같아집니다.
 
 ## 글꼴
 

@@ -25,4 +25,9 @@ b.vacation = { on: true, start: '2026-11-17', end: '2026-11-27', wake: '08:30' }
 b.routines.k1.vacation = [{ id: 'v1', emoji: '🛏️', title: '일어나서 이불 개기' }, { id: 'v2', emoji: '🧼', title: '세수하기', checks: ['얼굴', '손'] }];
 b.routines.k2.vacation = [{ id: 'v1', title: '이불 개기' }];
 fs.writeFileSync(path.join(out, 'config_vacation.json'), JSON.stringify(b));
-console.log('설정 2개를 만들었어요');
+// 3) 예전 설정: 나중 단계에서 생긴 칸이 저장돼 있지 않은 경우 (앱은 기본값으로 채워 보여 줌)
+const c = JSON.parse(JSON.stringify(base));
+for (const k of ['chores', 'vacation', 'dateSupplies', 'adults', 'subjects', 'study', 'copy', 'skills', 'rewards']) delete c[k];
+delete c.routines.k1.vacation; delete c.routines.k2.vacation;
+fs.writeFileSync(path.join(out, 'config_old.json'), JSON.stringify(c));
+console.log('설정 3개를 만들었어요');
