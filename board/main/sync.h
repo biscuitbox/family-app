@@ -18,7 +18,7 @@ typedef struct {
     uint32_t version;                    // 바뀔 때마다 1씩 올라감 → 화면을 다시 그림
     bool need_join;                      // 초대 코드가 필요함
     bool joining;
-    char join_msg[160];
+    char join_msg[320];
     int pending;                         // 아직 못 보낸 체크 수
     int last_status;                     // 마지막 HTTP 상태
     int64_t last_ok_us;                  // 마지막으로 읽기에 성공한 때

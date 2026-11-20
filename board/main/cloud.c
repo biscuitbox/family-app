@@ -33,6 +33,17 @@ static struct {
 } s;
 static SemaphoreHandle_t s_lock;
 static char s_auth_err[160];  // 마지막 로그인 실패 이유 (화면 안내용)
+static char s_fs_err[200];    // 마지막 Firestore 실패 이유 (Google이 보낸 message)
+
+// 실패 응답에서 Google의 error.message를 꺼내 기억하고 로그에 남긴다
+static void note_error(const char *what, int status, const char *body)
+{
+    ESP_LOGE("cloud", "%s → %d %s", what, status, body ? body : "(응답 없음)");
+    cJSON *j = cJSON_Parse(body ? body : "");
+    const char *m = cJSON_GetStringValue(cJSON_GetObjectItem(cJSON_GetObjectItem(j, "error"), "message"));
+    snprintf(s_fs_err, sizeof(s_fs_err), "%d: %s", status, m ? m : (body ? body : "응답 없음"));
+    cJSON_Delete(j);
+}
 
 // ---------- HTTPS ----------
 typedef struct { int status; char *body; size_t len; } resp_t;
@@ -141,6 +152,8 @@ static bool take_tokens(const char *body, const char *id_key, const char *refres
     const cJSON *ex = cJSON_GetObjectItem(j, exp_key), *uid = cJSON_GetObjectItem(j, uid_key);
     bool ok = cJSON_IsString(id) && cJSON_IsString(rf);
     if (ok) {
+        if (strlen(id->valuestring) >= sizeof(s.id_token)) ESP_LOGE(TAG, "토큰이 너무 길어요 (%u)", (unsigned)strlen(id->valuestring));
+        ESP_LOGI(TAG, "토큰 받음 (길이 %u)", (unsigned)strlen(id->valuestring));
         snprintf(s.id_token, sizeof(s.id_token), "%s", id->valuestring);
         snprintf(s.refresh, sizeof(s.refresh), "%s", rf->valuestring);
         if (cJSON_IsString(uid)) snprintf(s.uid, sizeof(s.uid), "%s", uid->valuestring);
@@ -236,6 +249,8 @@ int cloud_get(const char *rel, const char *query, cJSON **plain_out)
         cJSON *j = cJSON_Parse(r.body);
         *plain_out = fs_fields_to_json(cJSON_GetObjectItem(j, "fields"));
         cJSON_Delete(j);
+    } else if (st > 0) {
+        note_error(rel, st, r.body);
     }
     resp_free(&r);
     return st;
@@ -256,6 +271,7 @@ int cloud_batch_get(const char *const *rels, int n, cJSON **out)
     resp_t r;
     int st = authed(HTTP_METHOD_POST, FS_ROOT ":batchGet", body, &r);
     free(body);
+    if (st != 200 && st > 0) note_error("batchGet", st, r.body);
     if (st == 200) {
         cJSON *arr = cJSON_Parse(r.body), *e;
         cJSON_ArrayForEach(e, arr) {
@@ -279,7 +295,7 @@ int cloud_patch(const char *rel, const char *query, const cJSON *body)
     char *b = cJSON_PrintUnformatted(body);
     resp_t r;
     int st = authed(HTTP_METHOD_PATCH, url, b, &r);
-    if (st != 200) ESP_LOGW(TAG, "PATCH %s → %d %.200s", rel, st, r.body ? r.body : "");
+    if (st != 200 && st > 0) note_error(rel, st, r.body);
     free(url);
     free(b);
     resp_free(&r);
@@ -314,7 +330,7 @@ int cloud_join(const char *raw, char *msg, size_t msg_len)
     const char *kind = inv ? cJSON_GetStringValue(cJSON_GetObjectItem(inv, "kind")) : NULL;
     if (st == 404 || (st == 200 && !fid)) snprintf(msg, msg_len, "없는 초대 코드예요. 부모님 기기에서 새 코드를 만들어 주세요.");
     else if (st == -1 && s_auth_err[0]) snprintf(msg, msg_len, "%s", s_auth_err);
-    else if (st != 200) snprintf(msg, msg_len, "연결하지 못했어요 (%d). 인터넷을 확인해 주세요.", st);
+    else if (st != 200) snprintf(msg, msg_len, "초대 코드를 읽지 못했어요 — %s", s_fs_err[0] ? s_fs_err : "인터넷을 확인해 주세요.");
     else if (!kind || strcmp(kind, "board")) snprintf(msg, msg_len, "아이 기기용 코드예요. 가족 연결 탭에서 \"보드 초대 코드\"를 만들어 주세요.");
     else {
         struct timeval tv;
@@ -342,9 +358,9 @@ int cloud_join(const char *raw, char *msg, size_t msg_len)
             snprintf(msg, msg_len, "연결했어요!");
             ret = 0;
         } else if (st == 403) {
-            snprintf(msg, msg_len, "시간이 지났거나 쓸 수 없는 코드예요. 새 코드를 만들어 주세요.");
+            snprintf(msg, msg_len, "시간이 지났거나 쓸 수 없는 코드예요 — %s", s_fs_err);
         } else {
-            snprintf(msg, msg_len, "연결하지 못했어요 (%d).", st);
+            snprintf(msg, msg_len, "연결하지 못했어요 — %s", s_fs_err[0] ? s_fs_err : "인터넷을 확인해 주세요.");
         }
     }
     cJSON_Delete(inv);

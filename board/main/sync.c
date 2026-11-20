@@ -260,7 +260,7 @@ static void sync_task(void *arg)
             s_join_code[0] = 0;
             sync_unlock();
             if (code[0]) {
-                char msg[160];
+                char msg[320];
                 int r = cloud_join(code, msg, sizeof(msg));
                 sync_lock();
                 st.joining = false;

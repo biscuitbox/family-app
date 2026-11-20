@@ -104,7 +104,7 @@ static lv_obj_t *box(lv_obj_t *parent, lv_flex_flow_t flow)
 static lv_obj_t *label(lv_obj_t *parent, const char *text, const lv_font_t *f, uint32_t color)
 {
     lv_obj_t *l = lv_label_create(parent);
-    char clean[256];
+    char clean[400];
     strip_emoji(text, clean, sizeof(clean));
     lv_label_set_text(l, clean);
     lv_obj_set_style_text_font(l, f, 0);
@@ -479,7 +479,10 @@ static void build_join(board_state_t *st)
     act_t *a = new_act(A_JOIN, 0);
     lv_obj_t *b = button(c, st->joining ? "연결하는 중…" : "연결하기", F_TITLE, C_ION, C_BG, a);
     if (st->joining) lv_obj_add_state(b, LV_STATE_DISABLED);
-    if (st->join_msg[0]) label(c, st->join_msg, F_BODY, C_MORNING);
+    if (st->join_msg[0]) {
+        lv_obj_t *jm = label(c, st->join_msg, F_BODY, C_MORNING);
+        lv_obj_set_width(jm, LV_PCT(100)); // 긴 오류 문구는 줄을 바꿔 다 보이게
+    }
     s_join_net = label(c, "", F_SMALL, C_QUIET);
     lv_obj_t *kb = lv_keyboard_create(s_main);
     lv_keyboard_set_mode(kb, LV_KEYBOARD_MODE_TEXT_UPPER);
