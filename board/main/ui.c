@@ -58,6 +58,10 @@ static int s_n_acts;
 static lv_obj_t *s_top, *s_main, *s_join_ta;
 static uint32_t s_seen_version = UINT32_MAX;
 static int s_seen_minute = -1;
+static int s_seen_net = -1;          // 0 Wi-Fi 없음, 1 Wi-Fi만, 2 Wi-Fi+시각
+static lv_obj_t *s_join_net;         // 초대 코드 화면의 연결 상태 글자 (다시 그리지 않고 글자만 바꿈)
+static int net_state(void);
+static void set_join_net(int ns);
 static bool s_dirty = true;
 static int s_card[BOARD_MAX_KIDS] = {-1, -1, -1, -1};
 static bool s_review[BOARD_MAX_KIDS];
@@ -476,7 +480,7 @@ static void build_join(board_state_t *st)
     lv_obj_t *b = button(c, st->joining ? "연결하는 중…" : "연결하기", F_TITLE, C_ION, C_BG, a);
     if (st->joining) lv_obj_add_state(b, LV_STATE_DISABLED);
     if (st->join_msg[0]) label(c, st->join_msg, F_BODY, C_MORNING);
-    if (!net_up()) label(c, "Wi-Fi에 연결하는 중이에요…", F_SMALL, C_QUIET);
+    s_join_net = label(c, "", F_SMALL, C_QUIET);
     lv_obj_t *kb = lv_keyboard_create(s_main);
     lv_keyboard_set_mode(kb, LV_KEYBOARD_MODE_TEXT_UPPER);
     lv_keyboard_set_textarea(kb, s_join_ta);
@@ -490,6 +494,7 @@ static void rebuild(void)
 {
     s_n_acts = 0;
     s_join_ta = NULL;
+    s_join_net = NULL;
     lv_obj_clean(s_main);
     struct tm t;
     now_tm(&t);
@@ -497,7 +502,7 @@ static void rebuild(void)
     s_seen_version = st->version;
     s_seen_minute = t.tm_hour * 60 + t.tm_min;
 
-    if (st->need_join) { build_join(st); sync_unlock(); hw_backlight(70); return; }
+    if (st->need_join) { build_join(st); set_join_net(net_state()); sync_unlock(); hw_backlight(70); return; }
     if (!st->cfg || !net_time_ok()) {
         build_top(st, &t);
         label(s_main, net_up() ? "기록을 불러오는 중…" : "Wi-Fi에 연결하는 중…", F_BODY, C_QUIET);
@@ -587,9 +592,24 @@ static void on_click(lv_event_t *e)
     s_dirty = true;
 }
 
+static int net_state(void) { return !net_up() ? 0 : !net_time_ok() ? 1 : 2; }
+
+static void set_join_net(int ns)
+{
+    if (!s_join_net) return;
+    lv_label_set_text(s_join_net, ns == 0 ? "Wi-Fi에 연결하는 중이에요…" : ns == 1 ? "Wi-Fi 연결됨 · 시각 맞추는 중…" : "Wi-Fi 연결됨");
+    lv_obj_set_style_text_color(s_join_net, lv_color_hex(ns == 2 ? C_DONE : C_QUIET), 0);
+}
+
 static void tick(lv_timer_t *tm)
 {
     (void)tm;
+    int ns = net_state();
+    if (ns != s_seen_net) {
+        s_seen_net = ns;
+        if (s_join_ta) set_join_net(ns); // 코드 화면: 치던 글자는 두고 상태 글자만 바꾼다
+        else s_dirty = true;              // 다른 화면: 다시 그린다
+    }
     struct tm t;
     now_tm(&t);
     board_state_t *st = sync_lock();
