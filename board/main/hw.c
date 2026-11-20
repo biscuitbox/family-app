@@ -7,6 +7,7 @@
 //   백라이트: GPIO 23 PWM
 //   MIPI-DSI PHY 전원: 칩 안의 LDO 3번 채널 2.5V
 #include "hw.h"
+#include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "driver/ledc.h"
 #include "esp_idf_version.h"
@@ -17,6 +18,8 @@
 #include "esp_ldo_regulator.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "jc8012_v2_init.h"
 
 static const char *TAG = "hw";
@@ -36,6 +39,28 @@ static void touch_log(lv_event_t *e)
     lv_point_t p;
     lv_indev_get_point(lv_event_get_indev(e), &p);
     ESP_LOGI(TAG, "터치 x=%d y=%d", (int)p.x, (int)p.y);
+}
+
+// I2C 버스에 응답하는 장치를 로그에 남긴다 (정상: 0x18 코덱, 0x32 RTC, 0x40 터치)
+static void i2c_scan(i2c_master_bus_handle_t bus)
+{
+    char found[160];
+    size_t o = 0;
+    found[0] = 0;
+    for (uint16_t a = 0x08; a < 0x78 && o + 8 < sizeof(found); a++)
+        if (i2c_master_probe(bus, a, 50) == ESP_OK) o += snprintf(found + o, sizeof(found) - o, " 0x%02X", a);
+    ESP_LOGI(TAG, "I2C 장치:%s", o ? found : " 없음");
+}
+
+// 터치 칩을 리셋 핀으로 한 번 깨운다 (스캔에서 0x40이 보이게)
+static void touch_wake(void)
+{
+    gpio_config_t io = { .pin_bit_mask = 1ULL << PIN_TP_RST, .mode = GPIO_MODE_OUTPUT };
+    gpio_config(&io);
+    gpio_set_level(PIN_TP_RST, 0);
+    vTaskDelay(pdMS_TO_TICKS(20));
+    gpio_set_level(PIN_TP_RST, 1);
+    vTaskDelay(pdMS_TO_TICKS(50));
 }
 
 static void backlight_init(void)
@@ -137,8 +162,11 @@ lv_display_t *hw_init(void)
         .clk_source = I2C_CLK_SRC_DEFAULT, .glitch_ignore_cnt = 7, .flags.enable_internal_pullup = true,
     };
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_cfg, &i2c));
+    touch_wake();
+    i2c_scan(i2c);
     esp_lcd_panel_io_handle_t tp_io = NULL;
     esp_lcd_panel_io_i2c_config_t tp_io_cfg = ESP_LCD_TOUCH_IO_I2C_GSL3680_CONFIG();
+    tp_io_cfg.scl_speed_hz = 400000; // 새 I2C 드라이버는 속도를 꼭 줘야 한다 (이 보드 사례: 400kHz)
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(i2c, &tp_io_cfg, &tp_io));
     // INT 핀을 주면 LVGL이 '인터럽트가 올 때만 읽기'로 바뀌는데, 이 보드(2026년 판)는 INT 없이
     // 주기적으로 읽어야 터치가 들어온다는 사례가 있어 읽기 방식으로 둔다 (PIN_TP_INT는 쓰지 않음)
@@ -149,7 +177,14 @@ lv_display_t *hw_init(void)
         .flags = { .mirror_x = true },
     };
     esp_lcd_touch_handle_t tp = NULL;
-    esp_err_t terr = esp_lcd_touch_new_i2c_gsl3680(tp_io, &tp_cfg, &tp);
+    // 처음 켤 때 펌웨어를 한 번에 못 받는 경우가 있어 세 번까지 다시 해 본다
+    esp_err_t terr = ESP_FAIL;
+    for (int attempt = 1; attempt <= 3; attempt++) {
+        terr = esp_lcd_touch_new_i2c_gsl3680(tp_io, &tp_cfg, &tp);
+        if (terr == ESP_OK) break;
+        ESP_LOGW(TAG, "터치 켜기 %d번째 실패, 다시 해 봐요", attempt);
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
     if (terr == ESP_OK) {
         lvgl_port_touch_cfg_t tc = { .disp = disp, .handle = tp };
         lv_indev_t *indev = lvgl_port_add_touch(&tc);
