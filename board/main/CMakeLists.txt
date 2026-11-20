@@ -9,3 +9,5 @@ idf_component_register(
     EMBED_FILES "fonts/board_sans_regular.ttf" "fonts/board_sans_semibold.ttf"
     PRIV_REQUIRES ${reqs}
 )
+# 화면 글자는 칸이 모자라면 잘라 쓰도록 만들었으므로, 잘림 가능성 경고는 빌드를 멈추지 않게 한다
+target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error=format-truncation)

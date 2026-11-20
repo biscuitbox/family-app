@@ -291,7 +291,7 @@ int cloud_join(const char *raw, char *msg, size_t msg_len)
 
     xSemaphoreTakeRecursive(s_lock, portMAX_DELAY);
     int ret = 1;
-    char rel[160];
+    char rel[384];
     snprintf(rel, sizeof(rel), "invites/%s", code);
     cJSON *inv = NULL;
     int st = cloud_get(rel, NULL, &inv);

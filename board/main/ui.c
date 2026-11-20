@@ -169,7 +169,7 @@ static void build_top(board_state_t *st, const struct tm *t)
     char dad[200];
     adult_line(st->adult_log, dad, sizeof(dad));
     const cJSON *adults = jget(st->cfg, "adults");
-    char line[260];
+    char line[320];
     if (dad[0]) snprintf(line, sizeof(line), "%s의 오늘: %s", jstr(cJSON_GetArrayItem(adults, 0), "name", "아빠"), dad);
     else line[0] = 0;
     lv_obj_t *row2 = box(s_top, LV_FLEX_FLOW_ROW);
@@ -382,7 +382,7 @@ static void build_rest(lv_obj_t *p, board_state_t *st, int k, const struct tm *t
     if (streak > 1) snprintf(right, sizeof(right), "연속 발사 %d일", streak);
     panel_header(p, st, k, sub, done == total ? C_DONE : C_ION, right[0] ? right : NULL);
 
-    char buf[64];
+    char buf[96];
     lv_obj_t *tiles = box(p, LV_FLEX_FLOW_ROW);
     if (active) snprintf(buf, sizeof(buf), "지금 공부 중 · %s", subj);
     else if (smin) snprintf(buf, sizeof(buf), "오늘 %d분", smin);
