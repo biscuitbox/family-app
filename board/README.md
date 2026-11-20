@@ -48,7 +48,7 @@ idf.py build flash monitor
 
 | 증상 | 확인할 것 |
 | --- | --- |
-| 화면이 검게만 나옴 | Guition이 준 ESP-IDF 예제에서 JD9365 초기화 명령 배열을 찾아 `main/hw.c`의 `GUITION_INIT_CMDS` 자리(주석)에 넣습니다. 화면 리셋 핀이 있으면 menuconfig에서 `화면 리셋 GPIO`를 넣습니다. |
+| 백라이트만 켜지고 화면이 비어 있음 | 패널 판이 다른 경우입니다. 뒷면 스티커의 괄호 숫자(배치)가 2624 이후면 V2 패널이고, 지금 코드(`main/jc8012_v2_init.h`, 70MHz, 리셋 GPIO 27)가 그 패널용입니다. 그 전 배치라면 ESPHome `mipi_dsi/models/guition.py`의 `JC8012P4A1` 표와 60MHz·vsync 8/20 타이밍으로 바꿉니다. |
 | 터치가 안 되거나 좌우가 바뀜 | `hw.c`의 터치 핀(SDA 7, SCL 8, RST 22, INT 21)과 `mirror_x`를 확인합니다. |
 | Wi-Fi가 안 붙음 | 보드의 ESP32-C6 펌웨어가 오래되어 esp_hosted와 맞지 않는 경우가 있습니다. C6를 esp_hosted 최신 펌웨어로 올리고, P4–C6 연결(SDIO) 핀을 Guition 예제의 `sdkconfig`와 맞춥니다. |
 | "기록을 못 받고 있어요" | 시리얼 모니터에서 HTTP 상태를 봅니다. 403은 규칙 게시 전이거나 연결 해제, 400/401은 API 키 문제입니다. Google Cloud 콘솔에서 웹 API 키에 '웹사이트' 제한을 걸었다면 보드용 키를 따로 만들어 menuconfig에 넣습니다. |

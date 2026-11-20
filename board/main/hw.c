@@ -1,11 +1,11 @@
 // hw.c — 화면과 터치 켜기
 //
 // 핀과 부품 (공개된 커뮤니티 자료 기준 — 보드 판(revision)에 따라 다를 수 있음)
-//   화면: JD9365, MIPI-DSI 2레인, 800×1280 세로
+//   화면: JD9365, MIPI-DSI 2레인, 800×1280 세로, 리셋 GPIO 27
+//         배치 2624 이후(스티커의 괄호 숫자) 제품은 V2 패널 → jc8012_v2_init.h
 //   터치: GSL3680, I2C SDA 7 / SCL 8, RST 22 / INT 21, 주소 0x40
 //   백라이트: GPIO 23 PWM
 //   MIPI-DSI PHY 전원: 칩 안의 LDO 3번 채널 2.5V
-// 화면이 검게만 나오면 Guition 예제의 JD9365 초기화 명령 배열을 GUITION_INIT_CMDS 자리에 옮겨 넣으세요.
 #include "hw.h"
 #include "driver/i2c_master.h"
 #include "driver/ledc.h"
@@ -17,11 +17,13 @@
 #include "esp_ldo_regulator.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
+#include "jc8012_v2_init.h"
 
 static const char *TAG = "hw";
 
 #define LCD_H_RES 800
 #define LCD_V_RES 1280
+#define PIN_LCD_RST 27
 #define PIN_BL 23
 #define PIN_TP_SDA 7
 #define PIN_TP_SCL 8
@@ -68,17 +70,30 @@ lv_display_t *hw_init(void)
     esp_lcd_dbi_io_config_t dbi_cfg = JD9365_PANEL_IO_DBI_CONFIG();
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_dbi(dsi_bus, &dbi_cfg, &io));
 
+    // V2 패널 타이밍 (부품 기본값 80MHz·vsync 12/30과 다름)
+    esp_lcd_dpi_panel_config_t dpi_cfg = {
+        .dpi_clk_src = MIPI_DSI_DPI_CLK_SRC_DEFAULT,
+        .dpi_clock_freq_mhz = 70,
+        .virtual_channel = 0,
 #if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(6, 0, 0)
-    esp_lcd_dpi_panel_config_t dpi_cfg = JD9365_800_1280_PANEL_60HZ_DPI_CONFIG(LCD_COLOR_PIXEL_FORMAT_RGB565);
+        .pixel_format = LCD_COLOR_PIXEL_FORMAT_RGB565,
 #else
-    esp_lcd_dpi_panel_config_t dpi_cfg = JD9365_800_1280_PANEL_60HZ_DPI_CONFIG_CF(LCD_COLOR_FMT_RGB565);
+        .in_color_format = LCD_COLOR_FMT_RGB565,
 #endif
+        .num_fbs = 1,
+        .video_timing = {
+            .h_size = LCD_H_RES, .v_size = LCD_V_RES,
+            .hsync_pulse_width = 20, .hsync_back_porch = 20, .hsync_front_porch = 40,
+            .vsync_pulse_width = 4, .vsync_back_porch = 10, .vsync_front_porch = 20,
+        },
+    };
     jd9365_vendor_config_t vendor = {
-        // .init_cmds = GUITION_INIT_CMDS, .init_cmds_size = sizeof(GUITION_INIT_CMDS) / sizeof(GUITION_INIT_CMDS[0]),
+        .init_cmds = JC8012_V2_INIT_CMDS,
+        .init_cmds_size = sizeof(JC8012_V2_INIT_CMDS) / sizeof(JC8012_V2_INIT_CMDS[0]),
         .mipi_config = { .dsi_bus = dsi_bus, .dpi_config = &dpi_cfg, .lane_num = 2 },
     };
     esp_lcd_panel_dev_config_t panel_cfg = {
-        .reset_gpio_num = CONFIG_FAMILY_LCD_RST_GPIO,
+        .reset_gpio_num = PIN_LCD_RST,
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
         .vendor_config = &vendor,

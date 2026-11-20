@@ -20,8 +20,4 @@ menu "관제 센터 보드"
         string "Firebase 프로젝트 ID (config.js의 projectId)"
         default "family-app-6d615"
 
-    config FAMILY_LCD_RST_GPIO
-        int "화면 리셋 GPIO (-1이면 쓰지 않음)"
-        default -1
-
 endmenu
