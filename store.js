@@ -653,6 +653,7 @@
       const inv = await FB.db.collection('invites').doc(code).get();
       if (!inv.exists) throw new Error('없는 초대 코드예요. 부모님 기기에서 새 코드를 만들어 주세요.');
       const d = inv.data();
+      if (d.kind === 'board') throw new Error('관제 센터 보드용 코드예요. 보드 화면에 넣어 주세요.');
       if (d.expiresAt.toMillis() < Date.now()) throw new Error('시간이 지난 초대 코드예요. 새 코드를 만들어 주세요.');
       FB.fid = d.familyId;
       await FB.fam().collection('members').doc(uid).set({ role: 'kid', kidId: d.kidId, code, joinedAt: Date.now() });
@@ -666,10 +667,13 @@
     }
   };
 
+  // kidId가 BOARD_ID면 관제 센터 보드(벽에 거는 화면)용 코드를 만든다
+  const BOARD_ID = '_board';
+  Store.BOARD_ID = BOARD_ID;
   Store.createInvite = async function (kidId) {
     const code = randomCode(8);
     await FB.db.collection('invites').doc(code).set({
-      familyId: FB.fid, kidId, createdBy: FB.auth.currentUser.uid,
+      familyId: FB.fid, kidId, kind: kidId === BOARD_ID ? 'board' : 'kid', createdBy: FB.auth.currentUser.uid,
       expiresAt: firebase.firestore.Timestamp.fromMillis(Date.now() + 24 * 3600 * 1000)
     });
     return code;

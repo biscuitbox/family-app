@@ -1,0 +1,13 @@
+## 관제 센터 보드가 쓰는 부품 (ESP Component Registry)
+dependencies:
+  idf: ">=5.4"
+  lvgl/lvgl: "^9.2"
+  espressif/esp_lvgl_port: "^2.6"
+  espressif/esp_lcd_jd9365: "^2.0"          # 화면 (JD9365, MIPI-DSI)
+  guition/esp_lcd_touch_gsl3680: "*"        # 터치 (GSL3680, Guition JC8012P4A1C용 펌웨어 포함)
+  espressif/esp_wifi_remote: "*"            # ESP32-P4에서 esp_wifi 함수를 C6로 넘김
+  espressif/esp_hosted: "*"                 # P4 ↔ C6 연결
+  espressif/cjson:
+    version: "*"
+    rules:
+      - if: "idf_version >=6.0"
