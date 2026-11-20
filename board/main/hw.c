@@ -30,6 +30,14 @@ static const char *TAG = "hw";
 #define PIN_TP_RST 22
 #define PIN_TP_INT 21
 
+// 누를 때마다 좌표를 로그에 찍는다 (터치가 들어오는지, 방향이 맞는지 확인용)
+static void touch_log(lv_event_t *e)
+{
+    lv_point_t p;
+    lv_indev_get_point(lv_event_get_indev(e), &p);
+    ESP_LOGI(TAG, "터치 x=%d y=%d", (int)p.x, (int)p.y);
+}
+
 static void backlight_init(void)
 {
     ledc_timer_config_t t = {
@@ -132,18 +140,26 @@ lv_display_t *hw_init(void)
     esp_lcd_panel_io_handle_t tp_io = NULL;
     esp_lcd_panel_io_i2c_config_t tp_io_cfg = ESP_LCD_TOUCH_IO_I2C_GSL3680_CONFIG();
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_i2c(i2c, &tp_io_cfg, &tp_io));
+    // INT 핀을 주면 LVGL이 '인터럽트가 올 때만 읽기'로 바뀌는데, 이 보드(2026년 판)는 INT 없이
+    // 주기적으로 읽어야 터치가 들어온다는 사례가 있어 읽기 방식으로 둔다 (PIN_TP_INT는 쓰지 않음)
     esp_lcd_touch_config_t tp_cfg = {
         .x_max = LCD_H_RES, .y_max = LCD_V_RES,
-        .rst_gpio_num = PIN_TP_RST, .int_gpio_num = PIN_TP_INT,
+        .rst_gpio_num = PIN_TP_RST, .int_gpio_num = GPIO_NUM_NC,
         .levels = { .reset = 0, .interrupt = 0 },
         .flags = { .mirror_x = true },
     };
     esp_lcd_touch_handle_t tp = NULL;
-    if (esp_lcd_touch_new_i2c_gsl3680(tp_io, &tp_cfg, &tp) == ESP_OK) {
+    esp_err_t terr = esp_lcd_touch_new_i2c_gsl3680(tp_io, &tp_cfg, &tp);
+    if (terr == ESP_OK) {
         lvgl_port_touch_cfg_t tc = { .disp = disp, .handle = tp };
-        lvgl_port_add_touch(&tc);
+        lv_indev_t *indev = lvgl_port_add_touch(&tc);
+        if (indev && lvgl_port_lock(0)) {
+            lv_indev_add_event_cb(indev, touch_log, LV_EVENT_PRESSED, NULL);
+            lvgl_port_unlock();
+        }
+        ESP_LOGI(TAG, "터치 켜짐 (GSL3680, 주기적으로 읽기)");
     } else {
-        ESP_LOGE(TAG, "터치를 켜지 못했어요 — 화면만 보여 줍니다");
+        ESP_LOGE(TAG, "터치를 켜지 못했어요 (%s) — 화면만 보여 줍니다", esp_err_to_name(terr));
     }
 
     hw_backlight(70);
