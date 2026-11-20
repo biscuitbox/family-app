@@ -1,0 +1,23 @@
+menu "관제 센터 보드"
+
+    config FAMILY_WIFI_SSID
+        string "Wi-Fi 이름"
+        default "my-wifi"
+
+    config FAMILY_WIFI_PASSWORD
+        string "Wi-Fi 비밀번호"
+        default ""
+
+    config FAMILY_FIREBASE_API_KEY
+        string "Firebase 웹 API 키 (config.js의 apiKey)"
+        default "AIzaSyDLPy3-M2Rs661gWZfxejYm54ka_FrpeWY"
+        help
+            웹 앱 설정과 같은 공개용 키입니다. 데이터는 firestore.rules가 지킵니다.
+            Google Cloud 콘솔에서 이 키에 '웹사이트' 제한을 걸었다면 보드용 키를 따로 만들고
+            Identity Toolkit, Token Service, Cloud Firestore API만 쓰도록 제한해 넣으세요.
+
+    config FAMILY_FIREBASE_PROJECT_ID
+        string "Firebase 프로젝트 ID (config.js의 projectId)"
+        default "family-app-6d615"
+
+endmenu

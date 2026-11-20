@@ -471,16 +471,20 @@
         '<div><button class="btn danger" data-act="reset">' + (ui.armed === 'reset' ? '정말 처음으로 되돌리기' : '체험 데이터 처음으로') + '</button></div></div>';
     }
     const kids = S.config.kids;
-    const inv = ui.invite ? '<div class="section"><h2>' + esc(kidById(ui.invite.kidId).name) + ' 기기 초대 코드</h2><div class="row"><span class="code" id="invite-code">' + esc(ui.invite.code) + '</span><button class="btn small" data-act="copy">복사</button></div>' +
-      '<p class="lead">24시간 동안 쓸 수 있어요. 아이 기기에서 앱을 열고 "아이 기기 연결"에 이 코드를 넣으세요.</p></div>' : '';
+    const forBoard = ui.invite && ui.invite.kidId === S.BOARD_ID;
+    const invKid = ui.invite && !forBoard && kidById(ui.invite.kidId);
+    const inv = ui.invite ? '<div class="section"><h2>' + (forBoard ? '관제 센터 보드' : esc(invKid ? invKid.name : '아이') + ' 기기') + ' 초대 코드</h2><div class="row"><span class="code" id="invite-code">' + esc(ui.invite.code) + '</span><button class="btn small" data-act="copy">복사</button></div>' +
+      '<p class="lead">24시간 동안 쓸 수 있어요. ' + (forBoard ? '보드 화면의 "초대 코드" 칸에 이 코드를 넣으세요.' : '아이 기기에서 앱을 열고 "아이 기기 연결"에 이 코드를 넣으세요.') + '</p></div>' : '';
     const devs = S.members.map(m => {
       const k = m.kidId && kidById(m.kidId);
-      const label = m.role === 'parent' ? '부모 · ' + esc(m.name || '') : esc(k ? k.name : '아이') + ' 기기';
+      const label = m.role === 'parent' ? '부모 · ' + esc(m.name || '') : m.role === 'board' ? '관제 센터 보드' : esc(k ? k.name : '아이') + ' 기기';
       const me = S.user && m.uid === S.user.uid;
-      return '<li><span>' + label + (me ? ' (지금 이 기기)' : '') + '</span>' + (m.role === 'kid' ? '<button class="btn small danger" data-act="unlink" data-v="' + esc(m.uid) + '">' + (ui.armed === m.uid ? '정말 해제' : '연결 해제') + '</button>' : '') + '</li>';
+      return '<li><span>' + label + (me ? ' (지금 이 기기)' : '') + '</span>' + (m.role === 'kid' || m.role === 'board' ? '<button class="btn small danger" data-act="unlink" data-v="' + esc(m.uid) + '">' + (ui.armed === m.uid ? '정말 해제' : '연결 해제') + '</button>' : '') + '</li>';
     }).join('');
     return '<div class="section"><h2>아이 기기 연결하기</h2><p class="lead">아이마다 초대 코드를 만들어 아이 기기에서 한 번 입력하면, 그 기기는 계속 그 아이 화면으로 열려요.</p><div class="row">' +
-      kids.map(k => '<button class="btn" data-act="invite" data-v="' + k.id + '">' + esc(k.name) + ' 초대 코드 만들기</button>').join('') + '</div></div>' + inv +
+      kids.map(k => '<button class="btn" data-act="invite" data-v="' + k.id + '">' + esc(k.name) + ' 초대 코드 만들기</button>').join('') + '</div></div>' +
+      '<div class="section"><h2>관제 센터 보드 연결하기</h2><p class="lead">거실 벽에 거는 터치 화면(Guition 보드)이에요. 두 아이의 체크를 함께 받고, 별은 이 앱이 계산해 넣어 줘요. 아이들 기분 알림·숨긴 기록·용돈은 보드에 나오지 않아요.</p>' +
+      '<div class="row"><button class="btn" data-act="invite" data-v="' + S.BOARD_ID + '">보드 초대 코드 만들기</button></div></div>' + inv +
       '<div class="section"><h2>연결된 기기</h2><ul class="devices">' + (devs || '<li class="muted">아직 없어요</li>') + '</ul></div>';
   }
 
@@ -1893,6 +1897,41 @@
   }
   setInterval(announceReminders, 30000);
   S.onChange(() => setTimeout(announceReminders, 500));
+
+  // ---------- 관제 센터 보드에서 끝낸 활동에 별 주기 ----------
+  // 보드는 체크 칸(단계·확인 목록·집안일·공부 기록)만 쓰고 별은 계산하지 않는다.
+  // 이 기기가 기록을 받으면 "다 했는데 아직 별이 없는" 활동을 찾아 award()로 이어받는다.
+  // 아이 기기는 바로, 부모 기기는 끝낸 지 2분이 지나도 별이 없을 때만 준다 (두 기기가 함께 주지 않게).
+  const RECONCILE_WAIT = 2 * 60 * 1000;
+  function pendingAwards(who, wait) {
+    const l = dayLog(who), now = Date.now(), out = [];
+    const old = t => !wait || (Number(t) || 0) <= now - wait;
+    ['morning', 'evening'].forEach(m => {
+      const r = l[m] || {};
+      if (r.completedAt && !r.awarded && old(r.completedAt)) out.push(m);
+    });
+    const ss = vals((l.study || {}).sessions);
+    if (ss.length && !(l.study || {}).awarded && old(Math.max.apply(null, ss.map(s => Number(s.end) || 0)))) out.push('study');
+    const list = choresToday(who), items = choreItems(who);
+    if (list.length && list.every(c => items[c.id]) && !(l.chores || {}).awarded && old(Math.max.apply(null, list.map(c => Number(items[c.id]) || 0)))) out.push('chores');
+    return out;
+  }
+  let reconciling = false;
+  function reconcileAwards() {
+    if (reconciling || S.mode !== 'firebase' || S.status !== 'ready' || !S.config || !S.member) return;
+    const parent = S.member.role === 'parent';
+    const who = parent ? (S.config.kids || []).map(k => k.id) : S.member.role === 'kid' ? [S.member.kidId] : [];
+    reconciling = true;
+    try {
+      who.forEach(id => {
+        if (!kidById(id)) return;
+        pendingAwards(id, parent ? RECONCILE_WAIT : 0).forEach(cat => award(id, cat));
+      });
+    } catch (e) { console.error(e); }
+    finally { reconciling = false; }
+  }
+  S.onChange(() => setTimeout(reconcileAwards, 800));
+  setInterval(reconcileAwards, 60000);
 
   // ---------- 부모: 시간 탭 아래 (방학 · 기기 규칙 · 알림) ----------
   function timesMoreHTML() {

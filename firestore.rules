@@ -3,6 +3,7 @@ rules_version = '2';
 // 우리집 성장 앱 — Firestore 보안 규칙
 // 원칙: 가족(families/{familyId}) 안의 데이터는 그 가족에 연결된 기기만 읽고 쓴다.
 //       설정·사진은 부모만 바꾸고, 아이 기기는 자기 기록과 스티커만 쓴다.
+//       관제 센터 보드는 아이 기록의 체크 칸만 쓰고, 용돈·보상 신청·숨긴 아빠 기록은 읽지 못한다.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -18,9 +19,34 @@ service cloud.firestore {
       let inv = get(/databases/$(database)/documents/invites/$(request.resource.data.code)).data;
       return signedIn() && request.auth.uid == uid
         && request.resource.data.role == 'kid'
+        && inv.get('kind', 'kid') != 'board'
         && inv.familyId == fid
         && inv.kidId == request.resource.data.kidId
         && inv.expiresAt > request.time;
+    }
+
+    // 관제 센터 보드(벽에 거는 터치 화면): 보드용 초대 코드로만 들어온다
+    function isBoard(fid) { return isMember(fid) && role(fid) == 'board'; }
+    function validBoardJoin(fid, uid) {
+      let inv = get(/databases/$(database)/documents/invites/$(request.resource.data.code)).data;
+      return signedIn() && request.auth.uid == uid
+        && request.resource.data.role == 'board'
+        && inv.familyId == fid
+        && inv.get('kind', 'kid') == 'board'
+        && inv.expiresAt > request.time;
+    }
+    // 보드는 아이 하루 기록의 체크 칸만 쓴다. 별(stars·quests·각 활동의 awarded)은 앱이 준다.
+    function prevVal(p) { return resource == null ? null : resource.data.get(p, null); }
+    function keeps(p) { return request.resource.data.get(p, null) == prevVal(p); }
+    function boardLogWrite(fid, logId) {
+      let allowed = ['date', 'kidId', 'morning', 'evening', 'chores', 'mood', 'study'];
+      return isBoard(fid) && request.resource != null
+        && logId.matches('.*_k[0-9]+')
+        && (resource == null
+              ? request.resource.data.keys().hasOnly(allowed)
+              : request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowed))
+        && keeps(['morning', 'awarded']) && keeps(['evening', 'awarded'])
+        && keeps(['chores', 'awarded']) && keeps(['study', 'awarded']);
     }
 
     // 기기마다 어느 가족인지 기억하는 문서 (자기 것만)
@@ -46,7 +72,7 @@ service cloud.firestore {
       match /members/{uid} {
         allow read: if isMember(fid);
         allow create: if (signedIn() && request.auth.uid == uid && fid == request.auth.uid && request.resource.data.role == 'parent')
-                      || validJoin(fid, uid);
+                      || validJoin(fid, uid) || validBoardJoin(fid, uid);
         allow update: if false;
         allow delete: if isParent(fid);
       }
@@ -64,7 +90,8 @@ service cloud.firestore {
       // 하루 기록: 문서 이름이 "날짜_아이" — 아이 기기는 자기 기록만 쓴다
       match /logs/{logId} {
         allow read: if isMember(fid);
-        allow write: if isParent(fid) || (isMember(fid) && logId.matches('.*_' + myKid(fid)));
+        allow write: if isParent(fid) || boardLogWrite(fid, logId)
+                     || (isMember(fid) && logId.matches('.*_' + myKid(fid)));
       }
 
       // 스티커 수
@@ -100,13 +127,13 @@ service cloud.firestore {
 
       // 4단계: 용돈 기입장과 저축 목표 — 가족 모두 읽기, 각자 자기 것만 쓰기 (부모는 모두)
       match /money/{id} {
-        allow read: if isMember(fid);
+        allow read: if isMember(fid) && role(fid) != 'board';
         allow create: if isParent(fid) || (isMember(fid) && request.resource.data.owner == myKid(fid));
         allow update: if isParent(fid) || (isMember(fid) && resource.data.owner == myKid(fid) && request.resource.data.owner == myKid(fid));
         allow delete: if isParent(fid) || (isMember(fid) && resource.data.owner == myKid(fid));
       }
       match /goals/{id} {
-        allow read: if isMember(fid);
+        allow read: if isMember(fid) && role(fid) != 'board';
         allow create: if isParent(fid) || (isMember(fid) && request.resource.data.owner == myKid(fid));
         allow update: if isParent(fid) || (isMember(fid) && resource.data.owner == myKid(fid) && request.resource.data.owner == myKid(fid));
         allow delete: if isParent(fid) || (isMember(fid) && resource.data.owner == myKid(fid));
@@ -125,7 +152,7 @@ service cloud.firestore {
       }
       // 스티커 바꾸기: 아이는 자기 이름으로 신청만, 승인·거절은 부모만
       match /redeems/{id} {
-        allow read: if isMember(fid);
+        allow read: if isMember(fid) && role(fid) != 'board';
         allow create: if isParent(fid) || (isMember(fid) && request.resource.data.kidId == myKid(fid) && request.resource.data.status == 'requested');
         allow update, delete: if isParent(fid);
       }

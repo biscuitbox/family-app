@@ -1,0 +1,8 @@
+# 빌드 결과와 내려받은 부품
+build/
+managed_components/
+dependencies.lock
+# Wi-Fi 비밀번호가 들어가므로 올리지 않음
+sdkconfig
+sdkconfig.old
+test/build/
