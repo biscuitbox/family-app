@@ -53,6 +53,7 @@ idf.py build flash monitor
 | 증상 | 확인할 것 |
 | --- | --- |
 | 백라이트만 켜지고 화면이 비어 있음 | 패널 판이 다른 경우입니다. 뒷면 스티커의 괄호 숫자(배치)가 2624 이후면 V2 패널이고, 지금 코드(`main/jc8012_v2_init.h`, 70MHz, 리셋 GPIO 27)가 그 패널용입니다. 그 전 배치라면 ESPHome `mipi_dsi/models/guition.py`의 `JC8012P4A1` 표와 60MHz·vsync 8/20 타이밍으로 바꿉니다. |
+| 로그에 `gsl3680 … Invalid firmware status` / 터치가 됐다 안 됐다 함 | **전원 부족**입니다. 터치 칩이 펌웨어를 받고도 실행하지 못합니다. 컴퓨터 USB 허브·앞면 포트 대신 본체 뒷면 포트에 직접 꽂거나, 5V 2A 이상 충전기·보조배터리로 전원을 넣습니다(보조배터리로 바로 해결됨을 확인). 벽에 걸 때도 5V 2A 이상 어댑터를 씁니다. |
 | 터치가 안 되거나 좌우가 바뀜 | `hw.c`의 터치 핀(SDA 7, SCL 8, RST 22, INT 21)과 `mirror_x`를 확인합니다. |
 | 부팅 로그의 `major version mismatch — OTA coprocessor from host` | 보드에 들어 있는 C6 펌웨어(2.3.2)와 P4 쪽 esp_hosted(3.1)의 큰 번호가 달라서 나오는 안내입니다. 3.x는 2.x C6와 호환되어 Wi-Fi는 동작합니다. esp_hosted를 2.x로 낮추지 마세요(같은 보드에서 Wi-Fi가 켜지지 않은 사례). |
 | Wi-Fi가 안 붙음 | menuconfig의 Wi-Fi 이름·비밀번호를 확인합니다. 그래도 안 되면 C6 펌웨어를 esp_hosted 3.x로 올리는 것을 검토합니다. |
