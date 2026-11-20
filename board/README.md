@@ -25,7 +25,7 @@
 2. 바뀐 웹 앱이 GitHub Pages에 올라가 있어야 "보드 초대 코드 만들기" 버튼이 보입니다.
 
 ### 2. 빌드 준비
-- [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32p4/get-started/) 5.5 이상을 설치합니다.
+- [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32p4/get-started/) 6.1 이상을 설치합니다 (6.1.1에서 확인).
 - 부품(LVGL 9, esp_lvgl_port, JD9365 화면, GSL3680 터치, esp_hosted/esp_wifi_remote)은 처음 빌드할 때 `main/idf_component.yml`에 따라 자동으로 받아집니다.
 
 ```bash
@@ -42,15 +42,20 @@ idf.py build flash monitor
 2. 보드 화면의 키보드로 코드를 넣고 **연결하기**.
 3. 부모 앱의 연결된 기기 목록에 "관제 센터 보드"가 보이면 끝입니다. 여기서 **연결 해제**하면 보드는 바로 아무것도 읽지 못하고 다시 코드 입력 화면으로 돌아갑니다.
 
+## 부품 버전
+
+`main/idf_component.yml`에 실제 보드에서 확인한 버전을 고정해 두었습니다(LVGL 9.6.0, esp_lvgl_port 2.9.0, JD9365 2.0.2, GSL3680 0.1.0, esp_wifi_remote 1.6.5, esp_hosted 3.1.0). 부품을 올릴 때는 보드에서 화면·터치·Wi-Fi를 다시 확인하고 이 파일을 고칩니다.
+
 ## 처음 켤 때 막히면
 
-이 펌웨어의 화면·터치·Wi-Fi 설정은 공개된 커뮤니티 자료를 기준으로 했고, 실제 보드에서는 아직 시험하지 않았습니다. 보드 판(revision)마다 다를 수 있습니다.
+화면·터치·Wi-Fi는 JC8012P4A1C(SKU 10153001-V3, 배치 2639, P4 칩 v3.2)와 ESP-IDF 6.1.1에서 동작을 확인했습니다. 다른 판(revision)은 다를 수 있습니다.
 
 | 증상 | 확인할 것 |
 | --- | --- |
 | 백라이트만 켜지고 화면이 비어 있음 | 패널 판이 다른 경우입니다. 뒷면 스티커의 괄호 숫자(배치)가 2624 이후면 V2 패널이고, 지금 코드(`main/jc8012_v2_init.h`, 70MHz, 리셋 GPIO 27)가 그 패널용입니다. 그 전 배치라면 ESPHome `mipi_dsi/models/guition.py`의 `JC8012P4A1` 표와 60MHz·vsync 8/20 타이밍으로 바꿉니다. |
 | 터치가 안 되거나 좌우가 바뀜 | `hw.c`의 터치 핀(SDA 7, SCL 8, RST 22, INT 21)과 `mirror_x`를 확인합니다. |
-| Wi-Fi가 안 붙음 | 보드의 ESP32-C6 펌웨어가 오래되어 esp_hosted와 맞지 않는 경우가 있습니다. C6를 esp_hosted 최신 펌웨어로 올리고, P4–C6 연결(SDIO) 핀을 Guition 예제의 `sdkconfig`와 맞춥니다. |
+| 부팅 로그의 `major version mismatch — OTA coprocessor from host` | 보드에 들어 있는 C6 펌웨어(2.3.2)와 P4 쪽 esp_hosted(3.1)의 큰 번호가 달라서 나오는 안내입니다. 3.x는 2.x C6와 호환되어 Wi-Fi는 동작합니다. esp_hosted를 2.x로 낮추지 마세요(같은 보드에서 Wi-Fi가 켜지지 않은 사례). |
+| Wi-Fi가 안 붙음 | menuconfig의 Wi-Fi 이름·비밀번호를 확인합니다. 그래도 안 되면 C6 펌웨어를 esp_hosted 3.x로 올리는 것을 검토합니다. |
 | "기록을 못 받고 있어요" | 시리얼 모니터에서 HTTP 상태를 봅니다. 403은 규칙 게시 전이거나 연결 해제, 400/401은 API 키 문제입니다. Google Cloud 콘솔에서 웹 API 키에 '웹사이트' 제한을 걸었다면 보드용 키를 따로 만들어 menuconfig에 넣습니다. |
 | ESP-IDF 6.x에서 빌드 오류 | 화면 설정은 버전에 따라 나뉘어 있습니다(`hw.c`의 `ESP_IDF_VERSION` 분기). 부품 버전을 `idf_component.yml`에서 맞춰 봅니다. |
 
