@@ -34,6 +34,8 @@ static log_patch_t *s_pending[PENDING_MAX];
 static int s_n_pending;
 static char s_join_code[16];
 static uint32_t s_hash;
+static int64_t s_next_flush_us;   // 보내기에 실패했을 때 다음 시도 시각
+static int s_flush_fails;
 
 // 보드가 쓰는 설정 칸만 받는다 (보상·생활 기술·AI 설정 같은 큰 칸은 빼고)
 static const char *CONFIG_MASK =
@@ -191,6 +193,7 @@ static int fetch_today(bool with_stats)
 // ---------- 보내기 줄 ----------
 static void flush_writes(void)
 {
+    if (esp_timer_get_time() < s_next_flush_us) return;
     for (;;) {
         sync_lock();
         log_patch_t *p = s_n_pending ? s_pending[0] : NULL;
@@ -209,6 +212,8 @@ static void flush_writes(void)
         if (code == 200 || (code >= 400 && code < 500 && code != 401 && code != 429)) {
             // 성공했거나, 다시 보내도 안 되는 요청(규칙 거부 등)은 줄에서 뺀다
             if (code != 200) ESP_LOGE(TAG, "보내지 못하고 버림 (%d): %s", code, rel);
+            s_flush_fails = 0;
+            s_next_flush_us = 0;
             sync_lock();
             patch_free(s_pending[0]);
             free(s_pending[0]);
@@ -218,8 +223,14 @@ static void flush_writes(void)
             st.version++;
             sync_unlock();
         } else {
+            // 2, 4, 8 … 최대 60초 뒤에 다시 (화면에는 "보내는 중"이 그대로 남아 있다)
+            if (s_flush_fails < 5) s_flush_fails++;
+            int wait_s = 1 << s_flush_fails;
+            if (wait_s > 60) wait_s = 60;
+            s_next_flush_us = esp_timer_get_time() + (int64_t)wait_s * 1000000;
+            ESP_LOGW(TAG, "보내기 실패 (%d) — %d초 뒤에 다시", code, wait_s);
             sync_lock(); st.last_status = code; sync_unlock();
-            return; // 연결이 돌아오면 다시
+            return;
         }
     }
 }

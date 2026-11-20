@@ -12,6 +12,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include "esp_crt_bundle.h"
+#include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -52,7 +53,8 @@ static esp_err_t on_http(esp_http_client_event_t *e)
 {
     resp_t *r = e->user_data;
     if (e->event_id == HTTP_EVENT_ON_DATA && e->data_len > 0) {
-        char *nb = realloc(r->body, r->len + e->data_len + 1);
+        char *nb = heap_caps_realloc(r->body, r->len + e->data_len + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (!nb) nb = realloc(r->body, r->len + e->data_len + 1);
         if (!nb) return ESP_ERR_NO_MEM;
         memcpy(nb + r->len, e->data, e->data_len);
         r->len += e->data_len;

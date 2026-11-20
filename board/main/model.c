@@ -62,8 +62,13 @@ void normalize_config(cJSON *cfg, const char *defaults_json)
     if (!d) return;
     const cJSON *e;
     // Object.keys(d).forEach(k => { if (cfg[k] == null) cfg[k] = d[k]; })
-    cJSON_ArrayForEach(e, jget(d, "defaults"))
-        if (nullish(cJSON_GetObjectItemCaseSensitive(cfg, e->string))) put(cfg, e->string, cJSON_Duplicate(e, 1));
+    // 단, 보드 화면에 쓰는 칸만 채운다 (생활 기술·보상 목록 같은 큰 칸은 메모리만 차지하므로 뺀다)
+    static const char *USED[] = {"chores", "vacation", "dateSupplies", "adults", "mascot", "deviceRule", "weeklyCap"};
+    cJSON_ArrayForEach(e, jget(d, "defaults")) {
+        bool used = false;
+        for (size_t i = 0; i < sizeof(USED) / sizeof(USED[0]); i++) if (!strcmp(USED[i], e->string)) used = true;
+        if (used && nullish(cJSON_GetObjectItemCaseSensitive(cfg, e->string))) put(cfg, e->string, cJSON_Duplicate(e, 1));
+    }
     if (!cJSON_IsObject(jget(cfg, "routines"))) put(cfg, "routines", cJSON_CreateObject());
     if (!cJSON_IsObject(jget(cfg, "chores"))) put(cfg, "chores", cJSON_CreateObject());
     cJSON *routines = cJSON_GetObjectItemCaseSensitive(cfg, "routines");

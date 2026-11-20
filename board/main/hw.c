@@ -33,14 +33,6 @@ static const char *TAG = "hw";
 #define PIN_TP_RST 22
 #define PIN_TP_INT 21
 
-// 누를 때마다 좌표를 로그에 찍는다 (터치가 들어오는지, 방향이 맞는지 확인용)
-static void touch_log(lv_event_t *e)
-{
-    lv_point_t p;
-    lv_indev_get_point(lv_event_get_indev(e), &p);
-    ESP_LOGI(TAG, "터치 x=%d y=%d", (int)p.x, (int)p.y);
-}
-
 // I2C 버스에 응답하는 장치를 로그에 남긴다 (정상: 0x18 코덱, 0x32 RTC, 0x40 터치)
 static void i2c_scan(i2c_master_bus_handle_t bus)
 {
@@ -193,11 +185,7 @@ lv_display_t *hw_init(void)
     }
     if (terr == ESP_OK) {
         lvgl_port_touch_cfg_t tc = { .disp = disp, .handle = tp };
-        lv_indev_t *indev = lvgl_port_add_touch(&tc);
-        if (indev && lvgl_port_lock(0)) {
-            lv_indev_add_event_cb(indev, touch_log, LV_EVENT_PRESSED, NULL);
-            lvgl_port_unlock();
-        }
+        lvgl_port_add_touch(&tc);
         ESP_LOGI(TAG, "터치 켜짐 (GSL3680, 주기적으로 읽기)");
     } else {
         ESP_LOGE(TAG, "터치를 켜지 못했어요 (%s) — 화면만 보여 줍니다", esp_err_to_name(terr));
