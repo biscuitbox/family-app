@@ -32,6 +32,7 @@ static struct {
     int64_t expires_us;      // esp_timer 기준
 } s;
 static SemaphoreHandle_t s_lock;
+static char s_auth_err[160];  // 마지막 로그인 실패 이유 (화면 안내용)
 
 // ---------- HTTPS ----------
 typedef struct { int status; char *body; size_t len; } resp_t;
@@ -66,6 +67,9 @@ static int http(esp_http_client_method_t method, const char *url, const char *be
     esp_http_client_handle_t c = esp_http_client_init(&cfg);
     if (!c) return -1;
     esp_http_client_set_method(c, method);
+#ifdef CONFIG_FAMILY_HTTP_REFERER
+    if (CONFIG_FAMILY_HTTP_REFERER[0]) esp_http_client_set_header(c, "Referer", CONFIG_FAMILY_HTTP_REFERER);
+#endif
     if (bearer) {
         size_t n = strlen(bearer) + 8;
         char *h = malloc(n);
@@ -154,8 +158,18 @@ static bool sign_up(void)
     http(HTTP_METHOD_POST, "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" CONFIG_FAMILY_FIREBASE_API_KEY,
          NULL, "application/json", "{\"returnSecureToken\":true}", &r);
     bool ok = r.status == 200 && take_tokens(r.body, "idToken", "refreshToken", "expiresIn", "localId");
-    if (!ok) ESP_LOGE(TAG, "익명 로그인 실패 %d: %.200s", r.status, r.body ? r.body : "");
-    else { s.fid[0] = 0; nvs_save(); ESP_LOGI(TAG, "새 익명 로그인 uid=%s", s.uid); }
+    if (!ok) {
+        ESP_LOGE(TAG, "익명 로그인 실패 %d: %s", r.status, r.body ? r.body : "(응답 없음)");
+        if (r.status == 403)
+            snprintf(s_auth_err, sizeof(s_auth_err), "로그인이 거부됐어요 (403). API 키의 웹사이트 제한을 확인해 주세요 (README 참고).");
+        else if (r.status == 400)
+            snprintf(s_auth_err, sizeof(s_auth_err), "로그인하지 못했어요 (400). Firebase에서 익명 로그인이 켜져 있는지 확인해 주세요.");
+        else
+            snprintf(s_auth_err, sizeof(s_auth_err), "로그인하지 못했어요 (%d). 인터넷을 확인해 주세요.", r.status);
+    } else {
+        s_auth_err[0] = 0;
+        s.fid[0] = 0; nvs_save(); ESP_LOGI(TAG, "새 익명 로그인 uid=%s", s.uid);
+    }
     resp_free(&r);
     return ok;
 }
@@ -188,6 +202,7 @@ static bool ensure_token(bool force)
 // 토큰을 붙여 요청하고, 401이면 한 번 갱신해서 다시 보낸다
 static int authed(esp_http_client_method_t m, const char *url, const char *body, resp_t *out)
 {
+    memset(out, 0, sizeof(*out)); // 로그인에 실패해 요청을 못 보내도 out은 비어 있어야 한다
     xSemaphoreTakeRecursive(s_lock, portMAX_DELAY);
     int st = -1;
     if (ensure_token(false)) {
@@ -298,6 +313,7 @@ int cloud_join(const char *raw, char *msg, size_t msg_len)
     const char *fid = inv ? cJSON_GetStringValue(cJSON_GetObjectItem(inv, "familyId")) : NULL;
     const char *kind = inv ? cJSON_GetStringValue(cJSON_GetObjectItem(inv, "kind")) : NULL;
     if (st == 404 || (st == 200 && !fid)) snprintf(msg, msg_len, "없는 초대 코드예요. 부모님 기기에서 새 코드를 만들어 주세요.");
+    else if (st == -1 && s_auth_err[0]) snprintf(msg, msg_len, "%s", s_auth_err);
     else if (st != 200) snprintf(msg, msg_len, "연결하지 못했어요 (%d). 인터넷을 확인해 주세요.", st);
     else if (!kind || strcmp(kind, "board")) snprintf(msg, msg_len, "아이 기기용 코드예요. 가족 연결 탭에서 \"보드 초대 코드\"를 만들어 주세요.");
     else {

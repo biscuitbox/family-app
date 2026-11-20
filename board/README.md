@@ -56,6 +56,7 @@ idf.py build flash monitor
 | 터치가 안 되거나 좌우가 바뀜 | `hw.c`의 터치 핀(SDA 7, SCL 8, RST 22, INT 21)과 `mirror_x`를 확인합니다. |
 | 부팅 로그의 `major version mismatch — OTA coprocessor from host` | 보드에 들어 있는 C6 펌웨어(2.3.2)와 P4 쪽 esp_hosted(3.1)의 큰 번호가 달라서 나오는 안내입니다. 3.x는 2.x C6와 호환되어 Wi-Fi는 동작합니다. esp_hosted를 2.x로 낮추지 마세요(같은 보드에서 Wi-Fi가 켜지지 않은 사례). |
 | Wi-Fi가 안 붙음 | menuconfig의 Wi-Fi 이름·비밀번호를 확인합니다. 그래도 안 되면 C6 펌웨어를 esp_hosted 3.x로 올리는 것을 검토합니다. |
+| 연결하기를 누르면 "로그인이 거부됐어요 (403)" / 로그에 `익명 로그인 실패 403 … Permission denied on the service` | 웹 API 키에 '웹사이트' 제한이 걸려 있어 보드 요청이 거부된 것입니다. 둘 중 하나를 합니다. ① Google Cloud 콘솔 → API 및 서비스 → 사용자 인증 정보에서 **보드용 키를 새로 만들고**, 애플리케이션 제한은 '없음', API 제한은 Identity Toolkit API·Token Service API·Cloud Firestore API로 두고 menuconfig의 API 키에 넣습니다(권장). ② 같은 키를 쓰려면 menuconfig의 "API 요청에 붙일 웹사이트 주소"에 허용 목록의 주소(예: `https://biscuitbox.github.io/`)를 넣습니다. |
 | "기록을 못 받고 있어요" | 시리얼 모니터에서 HTTP 상태를 봅니다. 403은 규칙 게시 전이거나 연결 해제, 400/401은 API 키 문제입니다. Google Cloud 콘솔에서 웹 API 키에 '웹사이트' 제한을 걸었다면 보드용 키를 따로 만들어 menuconfig에 넣습니다. |
 | ESP-IDF 6.x에서 빌드 오류 | 화면 설정은 버전에 따라 나뉘어 있습니다(`hw.c`의 `ESP_IDF_VERSION` 분기). 부품 버전을 `idf_component.yml`에서 맞춰 봅니다. |
 
