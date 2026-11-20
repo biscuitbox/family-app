@@ -52,15 +52,16 @@ static void i2c_scan(i2c_master_bus_handle_t bus)
     ESP_LOGI(TAG, "I2C 장치:%s", o ? found : " 없음");
 }
 
-// 터치 칩을 리셋 핀으로 한 번 깨운다 (스캔에서 0x40이 보이게)
-static void touch_wake(void)
+// 터치 칩을 리셋 핀으로 확실히 껐다 켠다 (펌웨어를 다시 받을 수 있는 상태로)
+static void touch_hard_reset(void)
 {
     gpio_config_t io = { .pin_bit_mask = 1ULL << PIN_TP_RST, .mode = GPIO_MODE_OUTPUT };
     gpio_config(&io);
     gpio_set_level(PIN_TP_RST, 0);
-    vTaskDelay(pdMS_TO_TICKS(20));
-    gpio_set_level(PIN_TP_RST, 1);
     vTaskDelay(pdMS_TO_TICKS(50));
+    gpio_set_level(PIN_TP_RST, 1);
+    vTaskDelay(pdMS_TO_TICKS(100));
+    gpio_reset_pin(PIN_TP_RST); // 핀을 놓아준다 → 터치 드라이버가 다시 잡을 때 'conflict' 경고가 나지 않게
 }
 
 static void backlight_init(void)
@@ -162,7 +163,7 @@ lv_display_t *hw_init(void)
         .clk_source = I2C_CLK_SRC_DEFAULT, .glitch_ignore_cnt = 7, .flags.enable_internal_pullup = true,
     };
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_cfg, &i2c));
-    touch_wake();
+    touch_hard_reset();
     i2c_scan(i2c);
     esp_lcd_panel_io_handle_t tp_io = NULL;
     esp_lcd_panel_io_i2c_config_t tp_io_cfg = ESP_LCD_TOUCH_IO_I2C_GSL3680_CONFIG();
@@ -177,13 +178,18 @@ lv_display_t *hw_init(void)
         .flags = { .mirror_x = true },
     };
     esp_lcd_touch_handle_t tp = NULL;
-    // 처음 켤 때 펌웨어를 한 번에 못 받는 경우가 있어 세 번까지 다시 해 본다
+    // GSL3680은 펌웨어를 한 번에 못 받는 경우가 있다 (특히 전원을 끄지 않고 다시 올렸을 때).
+    // 실패하면 칩을 리셋 핀으로 껐다 켜고, 넉넉히 기다린 뒤 다시 싣는다. 최대 5번.
     esp_err_t terr = ESP_FAIL;
-    for (int attempt = 1; attempt <= 3; attempt++) {
+    for (int attempt = 1; attempt <= 5; attempt++) {
         terr = esp_lcd_touch_new_i2c_gsl3680(tp_io, &tp_cfg, &tp);
-        if (terr == ESP_OK) break;
-        ESP_LOGW(TAG, "터치 켜기 %d번째 실패, 다시 해 봐요", attempt);
-        vTaskDelay(pdMS_TO_TICKS(50));
+        if (terr == ESP_OK) {
+            if (attempt > 1) ESP_LOGI(TAG, "터치 켜기 %d번째에 성공", attempt);
+            break;
+        }
+        ESP_LOGW(TAG, "터치 켜기 %d번째 실패, 칩을 리셋하고 다시 해 봐요", attempt);
+        touch_hard_reset();
+        vTaskDelay(pdMS_TO_TICKS(200 * attempt));
     }
     if (terr == ESP_OK) {
         lvgl_port_touch_cfg_t tc = { .disp = disp, .handle = tp };
